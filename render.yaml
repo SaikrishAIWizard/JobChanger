@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: job-referral-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.main
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_RESUME_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_MATCH_MODEL
+        value: gemini-2.5-flash
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_EXTRACTION_MODEL
+        value: llama-3.3-70b-versatile
+      - key: LLM_TIMEOUT_SECONDS
+        value: "45"

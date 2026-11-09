@@ -1,0 +1,147 @@
+JOB REFERRAL BOT — LOCAL WINDOWS SETUP
+======================================
+
+IMPORTANT SECURITY NOTE
+-----------------------
+The previous .env.example contained credentials. Those values have been removed from
+the template, but consider the Discord bot token, Gemini API key, and Groq API key
+exposed. Revoke/rotate them with Discord Developer Portal, Google AI Studio, and
+Groq before using the bot. Never paste API keys into Discord or commit them to Git.
+Put fresh keys only in your local .env file.
+
+1. REQUIREMENTS
+---------------
+- Windows PowerShell
+- uv installed and available in PowerShell (`uv --version`)
+- Python 3.12 or 3.13 available to uv
+- A Discord bot application and a fresh bot token
+- A Gemini API key (required for resume parsing and job matching)
+- A Groq API key (optional; used only when a portal's deterministic parser finds no jobs)
+- PostgreSQL URL (optional for local testing; without it the bot works with no persistent cache)
+
+2. CREATE THE VIRTUAL ENVIRONMENT AND INSTALL PACKAGES
+------------------------------------------------------
+Run these commands from the JobSearchBot project directory:
+
+    uv venv --python 3.13 .venv
+    uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt
+
+If Python 3.13 is unavailable, choose an installed supported version, such as 3.12:
+
+    uv venv --python 3.12 .venv
+    uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt
+
+You can activate the environment for interactive work:
+
+    .\.venv\Scripts\Activate.ps1
+
+If PowerShell blocks activation, use the .venv interpreter directly in the commands
+below; changing PowerShell's execution policy is not necessary.
+
+3. CONFIGURE LOCAL ENVIRONMENT
+------------------------------
+Create a local .env from the safe template:
+
+    Copy-Item .env.example .env
+
+Open .env in VS Code and set:
+
+    DISCORD_TOKEN=<fresh Discord bot token>
+    GEMINI_API_KEY=<Gemini API key>
+    GEMINI_RESUME_MODEL=gemini-3.8-flash
+    GEMINI_RESUME_FALLBACK_MODEL=gemini-3.6-flash
+    GEMINI_MATCH_MODEL=gemini-3.8-flash
+    GEMINI_MATCH_FALLBACK_MODEL=gemini-3.6-flash
+    GROQ_API_KEY=<Groq API key, optional>
+    GROQ_EXTRACTION_MODEL=llama-3.3-70b-versatile
+    LLM_TIMEOUT_SECONDS=45
+    DATABASE_URL=<PostgreSQL URL, optional>
+
+Leave DATABASE_URL blank to test without persistent job caching. Do not put quotation
+marks around values. .env is ignored by Git; do not share it.
+The model names above are defaults; replace them with model IDs available to your API
+account if needed. If Gemini returns 429/503/504 or times out after the model fallback,
+a non-empty GROQ_API_KEY
+and GROQ_EXTRACTION_MODEL are used automatically for resume parsing and matching. Restart
+the bot after editing .env.
+
+4. CREATE AND INVITE THE DISCORD BOT
+------------------------------------
+1. In https://discord.com/developers/applications, create an application.
+2. Under Bot, create/reset the bot token and copy the fresh token into .env.
+3. Under OAuth2 > URL Generator, select scopes: bot and applications.commands.
+4. Select only the bot permissions needed to view the server/channel and send messages.
+5. Open the generated invite URL and add the bot to a test server where you have permission.
+6. In that server, allow the bot a channel in which it can respond.
+
+Never share the generated invite link if it includes permissions you do not intend.
+No privileged message-content intent is needed; commands are slash commands.
+
+5. RUN THE BOT AND HEALTH ENDPOINT
+----------------------------------
+In PowerShell window 1, from the project directory:
+
+    .\.venv\Scripts\python.exe -m app.main
+
+Wait for the Discord client to connect and for the application commands to sync. Keep
+this process running. The web health endpoint listens on port 10000 by default.
+
+In PowerShell window 2, verify the health endpoint:
+
+    Invoke-RestMethod http://127.0.0.1:10000/health
+
+Expected JSON has status "ok"; bot changes from "connecting" to "connected" after
+the bot logs in. If port 10000 is occupied, set PORT to another available port in .env
+and use that port in the health URL.
+
+6. TEST IN DISCORD
+------------------
+After the bot connects and commands sync, in the test server:
+
+1. Attach a text-based PDF resume and run /find-jobs.
+2. Leave company_name blank for global remote search, or enter Amazon, Google, or Apple.
+3. Use a job_count between 1 and 50 (start with 3 to reduce API use) and set
+   min_match_percentage between 50 and 99.
+4. Check the ephemeral response, role links, match score, rationale, and pagination.
+5. To test /referral-network, attach a PDF and a CSV/XLSX with headers:
+   friend_name, company_name, phone_number
+   Include companies supported by the initial adapters: Amazon, Google, and Apple.
+
+Image-only/scanned resumes are not supported. The first Gemini call parses the resume;
+another Gemini call scores jobs. A valid Gemini key is therefore required for these
+commands. Apple/Google may require Groq only if their page layout cannot be parsed.
+Results are filtered by min_match_percentage. If no listing reaches that score, the bot
+shows the closest available matches and reports the best score it found.
+Job availability and portal response formats can change.
+
+7. RUN TESTS AND CHECK LIVE JOB PORTALS
+---------------------------------------
+Run the automated tests:
+
+    .\.venv\Scripts\python.exe -m pytest -q
+
+Probe live career sources (requires internet access; no Discord login is needed):
+
+    .\.venv\Scripts\python.exe -m scripts.probe_job_sources --query "software engineer" --limit 3
+
+The probe reports Amazon, Google, Apple, and Remotive independently. A portal can fail
+temporarily due to network restrictions, rate limits, or changes to its public pages.
+
+TROUBLESHOOTING
+---------------
+- "DISCORD_TOKEN is required": check that .env exists and contains the fresh bot token.
+- Discord login failure: reset the bot token in the Developer Portal, update .env, restart.
+- Slash commands missing: verify the bot was invited with applications.commands; restart
+  the bot and allow a short time for guild/global command synchronization.
+- Resume parsing/matching reports Gemini errors: check GEMINI_API_KEY and API access.
+- Gemini reports 503/UNAVAILABLE: it is usually a temporary model-capacity issue. Retry
+  later or set the relevant *_FALLBACK_MODEL to another model enabled for your API key.
+  If both Gemini models fail, the bot tries GROQ_EXTRACTION_MODEL when GROQ_API_KEY is set.
+  Check that the key is non-empty and that the configured Groq model is available for it.
+- A Gemini operation times out: each request is limited by LLM_TIMEOUT_SECONDS (45
+  seconds by default); retry later or select a responsive model available to your key.
+- Database warning: normal when DATABASE_URL is blank; persistent cache is disabled.
+- Portals fail: run the source probe and check network access; no browser automation is used.
+
+
+uv run python -m app.main
